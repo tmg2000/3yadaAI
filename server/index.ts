@@ -92,7 +92,7 @@ app.post("/api/sessions", authMiddleware, async (req, res) => {
   try {
     const db = await getDb();
     const sessionId = generateId();
-    const { title } = req.body as { title?: string };
+    const { title } = (req.body || {}) as { title?: string };
     await db.prepare("INSERT INTO sessions (id, user_id, title, status) VALUES (?, ?, ?, 'in_progress')").run(
       sessionId, req.user!.id, title || "استشارة جديدة"
     );

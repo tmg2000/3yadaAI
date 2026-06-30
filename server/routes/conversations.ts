@@ -16,7 +16,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const db = await getDb();
   const id = generateId();
-  const title = (req.body as { title?: string }).title?.trim() || "استشارة جديدة";
+  const title = ((req.body || {}) as { title?: string }).title?.trim() || "استشارة جديدة";
   await db.prepare("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)").run(id, req.user!.id, title);
   res.json({ id, title, created_at: new Date().toISOString() });
 });
@@ -50,7 +50,7 @@ router.delete("/:id", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   const db = await getDb();
-  const title = (req.body as { title?: string }).title?.trim();
+  const title = ((req.body || {}) as { title?: string }).title?.trim();
   if (!title) {
     res.status(400).json({ error: "العنوان مطلوب" });
     return;
