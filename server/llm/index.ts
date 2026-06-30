@@ -10,17 +10,23 @@ import {
   checkOpenRouterHealth,
   getOpenRouterModel,
 } from "./openrouter.js";
+import {
+  chatWithTogether,
+  getInitialGreetingTogether,
+  checkTogetherHealth,
+  getTogetherModel,
+} from "./together.js";
 import type { PatientProfileContext } from "../patientProfile.js";
 import type { ChatMessage, LlmChatResponse } from "./types.js";
 
 export type { ChatMessage, MedicalSummary, LlmChatResponse } from "./types.js";
 export { extractFileText };
 
-export type LlmProvider = "openrouter" | "ollama" | "gemini";
+export type LlmProvider = "openrouter" | "together" | "ollama" | "gemini";
 
 export function getLlmProvider(): LlmProvider {
   const raw = (process.env.LLM_PROVIDER || "openrouter").trim().toLowerCase();
-  if (raw === "ollama" || raw === "gemini" || raw === "openrouter") return raw;
+  if (raw === "ollama" || raw === "gemini" || raw === "openrouter" || raw === "together") return raw;
   return "openrouter";
 }
 
@@ -28,6 +34,8 @@ export function getLlmModel(): string {
   switch (getLlmProvider()) {
     case "openrouter":
       return getOpenRouterModel();
+    case "together":
+      return getTogetherModel();
     case "ollama":
       return process.env.OLLAMA_MODEL?.trim() || "qwen2.5";
     case "gemini":
@@ -41,6 +49,8 @@ export async function checkLlmHealth(): Promise<boolean> {
   switch (getLlmProvider()) {
     case "openrouter":
       return checkOpenRouterHealth();
+    case "together":
+      return checkTogetherHealth();
     case "ollama":
       return checkOllamaHealth();
     case "gemini":
@@ -58,6 +68,8 @@ export async function chatWithLlm(
   switch (getLlmProvider()) {
     case "openrouter":
       return chatWithOpenRouter(history, userMessage, patientContext);
+    case "together":
+      return chatWithTogether(history, userMessage, patientContext);
     case "ollama":
       return chatWithOllama(history, userMessage, patientContext);
     case "gemini": {
@@ -75,6 +87,8 @@ export async function getInitialGreeting(
   switch (getLlmProvider()) {
     case "openrouter":
       return getInitialGreetingOpenRouter(patientContext);
+    case "together":
+      return getInitialGreetingTogether(patientContext);
     case "ollama":
       return getInitialGreetingOllama(patientContext);
     case "gemini": {
