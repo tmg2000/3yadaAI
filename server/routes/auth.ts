@@ -40,13 +40,13 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.get("/me", authMiddleware, (req, res) => {
+router.get("/me", authMiddleware, async (req, res) => {
   res.json({ user: req.user });
 });
 
 router.put("/me", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { name, date_of_birth, gender, phone, age, health_insurance } = req.body as {
       name?: string;
       date_of_birth?: string | null;
@@ -56,9 +56,9 @@ router.put("/me", authMiddleware, async (req, res) => {
       health_insurance?: string | null;
     };
     if (name?.trim()) {
-      db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name.trim(), req.user!.id);
+      await db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name.trim(), req.user!.id);
     }
-    db.prepare(
+    await db.prepare(
       "UPDATE users SET date_of_birth = ?, gender = ?, phone = ?, age = ?, health_insurance = ? WHERE id = ?"
     ).run(
       date_of_birth ?? null,
@@ -68,7 +68,7 @@ router.put("/me", authMiddleware, async (req, res) => {
       health_insurance?.trim() || null,
       req.user!.id
     );
-    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user!.id) as UserRow;
+    const row = await db.prepare("SELECT * FROM users WHERE id = ?").get(req.user!.id) as UserRow;
     res.json({ user: toSafeUser(row) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "فشل تحديث الملف";

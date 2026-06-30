@@ -22,9 +22,9 @@ export function computeAgeFromDob(dateOfBirth: string | null | undefined): numbe
   return age > 0 && age < 130 ? age : null;
 }
 
-export function getPatientProfileContext(userId: string): PatientProfileContext {
-  const db = getDb();
-  const row = db
+export async function getPatientProfileContext(userId: string): Promise<PatientProfileContext> {
+  const db = await getDb();
+  const row = await db
     .prepare("SELECT age, health_insurance, date_of_birth FROM users WHERE id = ?")
     .get(userId) as { age: number | null; health_insurance: string | null; date_of_birth: string | null } | undefined;
 
@@ -39,10 +39,10 @@ export function getPatientProfileContext(userId: string): PatientProfileContext 
   };
 }
 
-export function applyProfileUpdates(userId: string, updates: ProfileUpdates | undefined): void {
+export async function applyProfileUpdates(userId: string, updates: ProfileUpdates | undefined): Promise<void> {
   if (!updates) return;
 
-  const db = getDb();
+  const db = await getDb();
   const sets: string[] = [];
   const values: unknown[] = [];
 
@@ -67,5 +67,5 @@ export function applyProfileUpdates(userId: string, updates: ProfileUpdates | un
 
   if (sets.length === 0) return;
   values.push(userId);
-  db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+  await db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
 }

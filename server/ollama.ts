@@ -76,7 +76,7 @@ export async function getInitialGreeting(
 
 export async function extractFileText(
   filePath: string,
-  mimeType: string
+  _mimeType: string
 ): Promise<string> {
   const ext = extname(filePath).toLowerCase();
 

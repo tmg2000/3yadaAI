@@ -39,18 +39,20 @@ const HOST = process.env.HOST?.trim() || "0.0.0.0";
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-const uploadsDir = join(__dirname, "uploads");
+const uploadsDir = process.env.VERCEL ? "/tmp/uploads" : join(__dirname, "uploads");
 if (!existsSync(uploadsDir)) {
   mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
-    cb(null, unique);
-  },
-});
+const storage = process.env.VERCEL
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => {
+        const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+        cb(null, unique);
+      },
+    });
 
 const upload = multer({
   storage,
@@ -86,12 +88,12 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/admin", adminRoutes);
 
-app.post("/api/sessions", authMiddleware, (req, res) => {
+app.post("/api/sessions", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const sessionId = generateId();
     const { title } = req.body as { title?: string };
-    db.prepare("INSERT INTO sessions (id, user_id, title, status) VALUES (?, ?, ?, 'in_progress')").run(
+    await db.prepare("INSERT INTO sessions (id, user_id, title, status) VALUES (?, ?, ?, 'in_progress')").run(
       sessionId, req.user!.id, title || "استشارة جديدة"
     );
     res.json({ sessionId });
@@ -100,10 +102,10 @@ app.post("/api/sessions", authMiddleware, (req, res) => {
   }
 });
 
-app.get("/api/sessions", authMiddleware, (req, res) => {
+app.get("/api/sessions", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const sessions = db.prepare(`
+    const db = await getDb();
+    const sessions = await db.prepare(`
       SELECT s.*,
         (SELECT COUNT(*) FROM conversations WHERE session_id = s.id) as conversation_count,
         (SELECT COUNT(*) FROM appointments WHERE session_id = s.id) as appointment_count,
@@ -119,21 +121,21 @@ app.get("/api/sessions", authMiddleware, (req, res) => {
   }
 });
 
-app.get("/api/sessions/:id", authMiddleware, (req, res) => {
+app.get("/api/sessions/:id", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const session = db.prepare("SELECT * FROM sessions WHERE id = ? AND user_id = ?").get(req.params.id, req.user!.id) as any;
+    const db = await getDb();
+    const session = await db.prepare("SELECT * FROM sessions WHERE id = ? AND user_id = ?").get(req.params.id, req.user!.id) as any;
     if (!session) {
       res.status(404).json({ error: "الجلسة غير موجودة" });
       return;
     }
-    const conversations = db.prepare(`
+    const conversations = await db.prepare(`
       SELECT c.*,
         (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as messages_count,
         (SELECT content FROM messages WHERE conversation_id = c.id AND role = 'assistant' ORDER BY created_at ASC LIMIT 1) as first_message
       FROM conversations c WHERE c.session_id = ? ORDER BY c.created_at ASC
     `).all(req.params.id);
-    const appointments = db.prepare(`
+    const appointments = await db.prepare(`
       SELECT a.*, d.name as doctor_name, d.hospital, d.city
       FROM appointments a
       LEFT JOIN doctors d ON d.id = a.doctor_id
@@ -145,16 +147,16 @@ app.get("/api/sessions/:id", authMiddleware, (req, res) => {
   }
 });
 
-app.put("/api/sessions/:id", authMiddleware, (req, res) => {
+app.put("/api/sessions/:id", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { summary, status } = req.body as { summary?: any; status?: string };
     if (summary !== undefined) {
-      db.prepare("UPDATE sessions SET summary_json = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      await db.prepare("UPDATE sessions SET summary_json = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
         .run(JSON.stringify(summary), req.params.id, req.user!.id);
     }
     if (status !== undefined) {
-      db.prepare("UPDATE sessions SET status = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      await db.prepare("UPDATE sessions SET status = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
         .run(status, req.params.id, req.user!.id);
     }
     res.json({ success: true });
@@ -165,7 +167,7 @@ app.put("/api/sessions/:id", authMiddleware, (req, res) => {
 
 app.post("/api/chat/start", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const convId = generateId();
     const userId = req.user!.id;
     const { sessionId } = req.body as { sessionId?: string };
@@ -174,22 +176,22 @@ app.post("/api/chat/start", authMiddleware, async (req, res) => {
     let sid = sessionId;
     if (!sid) {
       sid = generateId();
-      db.prepare("INSERT INTO sessions (id, user_id, title, status) VALUES (?, ?, ?, 'in_progress')").run(
+      await db.prepare("INSERT INTO sessions (id, user_id, title, status) VALUES (?, ?, ?, 'in_progress')").run(
         sid, userId, "استشارة جديدة"
       );
     }
 
-    db.prepare("INSERT INTO conversations (id, user_id, session_id) VALUES (?, ?, ?)").run(convId, userId, sid);
+    await db.prepare("INSERT INTO conversations (id, user_id, session_id) VALUES (?, ?, ?)").run(convId, userId, sid);
 
-    const patientContext = getPatientProfileContext(userId);
+    const patientContext = await getPatientProfileContext(userId);
     const rawResponse = await getInitialGreeting(patientContext);
-    applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
+    await applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
     const response = stripProfileUpdates(rawResponse);
-    db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
       generateId(), convId, "assistant", response.message
     );
-    db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
-    db.prepare("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?").run(sid);
+    await db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
+    await db.prepare("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?").run(sid);
 
     res.json({ ...response, conversationId: convId, sessionId: sid });
   } catch (err) {
@@ -202,9 +204,9 @@ app.post("/api/chat/start", authMiddleware, async (req, res) => {
 
 app.post("/api/chat/:conversationId", authMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const convId = req.params.conversationId;
-    const conv = db.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").get(convId, req.user!.id);
+    const conv = await db.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").get(convId, req.user!.id);
     if (!conv) {
       res.status(404).json({ error: "المحادثة غير موجودة" });
       return;
@@ -221,19 +223,19 @@ app.post("/api/chat/:conversationId", authMiddleware, async (req, res) => {
       return;
     }
 
-    db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
       generateId(), convId, "user", msg.trim()
     );
 
     const userId = req.user!.id;
-    const patientContext = getPatientProfileContext(userId);
+    const patientContext = await getPatientProfileContext(userId);
     const rawResponse = await chatWithLlm(history, msg.trim(), patientContext);
-    applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
+    await applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
     const response = stripProfileUpdates(rawResponse);
-    db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
       generateId(), convId, "assistant", response.message
     );
-    db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
+    await db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
     res.json(response);
   } catch (err) {
     console.error("chat error:", err);
@@ -245,9 +247,9 @@ app.post("/api/chat/:conversationId", authMiddleware, async (req, res) => {
 
 app.post("/api/chat/:conversationId/upload", authMiddleware, upload.array("files", 5), async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const convId = req.params.conversationId;
-    const conv = db.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").get(convId, req.user!.id);
+    const conv = await db.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").get(convId, req.user!.id);
     if (!conv) {
       res.status(404).json({ error: "المحادثة غير موجودة" });
       return;
@@ -274,7 +276,7 @@ app.post("/api/chat/:conversationId/upload", authMiddleware, upload.array("files
       ? files.map((f) => ({ name: f.originalname, path: f.filename }))
       : undefined;
 
-    db.prepare("INSERT INTO messages (id, conversation_id, role, content, attachments) VALUES (?, ?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO messages (id, conversation_id, role, content, attachments) VALUES (?, ?, ?, ?, ?)").run(
       generateId(), convId, "user", message, attachments ? JSON.stringify(attachments) : null
     );
 
@@ -287,14 +289,14 @@ app.post("/api/chat/:conversationId/upload", authMiddleware, upload.array("files
     }
 
     const userId = req.user!.id;
-    const patientContext = getPatientProfileContext(userId);
+    const patientContext = await getPatientProfileContext(userId);
     const rawResponse = await chatWithLlm(history, message.trim(), patientContext);
-    applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
+    await applyProfileUpdates(userId, rawResponse.profileUpdates ?? undefined);
     const response = stripProfileUpdates(rawResponse);
-    db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
       generateId(), convId, "assistant", response.message
     );
-    db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
+    await db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(convId);
     res.json(response);
   } catch (err) {
     console.error("chat/upload error:", err);
@@ -304,8 +306,8 @@ app.post("/api/chat/:conversationId/upload", authMiddleware, upload.array("files
   }
 });
 
-app.get("/api/doctors", (req, res) => {
-  const db = getDb();
+app.get("/api/doctors", async (req, res) => {
+  const db = await getDb();
   const specialties = req.query.specialties as string | undefined;
   const city = req.query.city as string | undefined;
   const insurance = req.query.insurance as string | undefined;
@@ -321,14 +323,14 @@ app.get("/api/doctors", (req, res) => {
   let rows: Array<Record<string, unknown>>;
   if (keys.length > 0) {
     const placeholders = keys.map(() => "?").join(",");
-    rows = db
+    rows = await db
       .prepare(
         `SELECT * FROM doctors WHERE specialty_key IN (${placeholders})${cityFilter} ORDER BY rating DESC, experience_years DESC`
       )
       .all(...keys, ...cityParams) as Array<Record<string, unknown>>;
     // لا نُكمّل من تخصصات أخرى — فقط الأطباء المطابقون للتخصص المطلوب
   } else {
-    rows = db
+    rows = await db
       .prepare(
         `SELECT * FROM doctors${cityFilter ? " WHERE 1=1" + cityFilter : ""} ORDER BY rating DESC LIMIT 20`
       )
@@ -367,9 +369,9 @@ app.get("/api/doctors", (req, res) => {
 });
 
 // DB Reset endpoint (admin-only in production)
-app.post("/api/reset-db", adminAuthMiddleware, (_req, res) => {
+app.post("/api/reset-db", adminAuthMiddleware, async (_req, res) => {
   try {
-    resetDb();
+    await resetDb();
     res.json({ success: true, message: "تم إعادة تعيين قاعدة البيانات بنجاح" });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "فشل إعادة التعيين" });
@@ -390,11 +392,14 @@ if (existsSync(clientDist)) {
   });
 }
 
-app.listen(PORT, HOST, () => {
-  console.log(`🩺 عيادة API يعمل على المنفذ ${PORT} (جميع الواجهات: ${HOST})`);
-  console.log(`   محلي: http://localhost:${PORT}`);
-  if (existsSync(clientDist)) {
-    console.log(`   الويب: http://localhost:${PORT} (واجهة + API من نفس العنوان)`);
-  }
-  console.log(`🤖 الذكاء الاصطناعي: ${getLlmProvider()} / ${getLlmModel()}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, HOST, () => {
+    console.log(`🩺 عيادة API يعمل على المنفذ ${PORT} (جميع الواجهات: ${HOST})`);
+    console.log(`   محلي: http://localhost:${PORT}`);
+    if (existsSync(clientDist)) {
+      console.log(`   الويب: http://localhost:${PORT} (واجهة + API من نفس العنوان)`);
+    }
+    console.log(`🤖 الذكاء الاصطناعي: ${getLlmProvider()} / ${getLlmModel()}`);
+  });
+}
+export default app;

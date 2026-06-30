@@ -1,5 +1,4 @@
 import { Router } from "express";
-import bcrypt from "bcryptjs";
 import { doctorAuthMiddleware, createDoctor, loginDoctor, toSafeDoctor } from "../auth-doctor.js";
 import { getDb, generateId } from "../db.js";
 import multer from "multer";
@@ -85,7 +84,7 @@ router.post("/register", upload.fields([
 });
 
 // --- Profile ---
-router.get("/me", doctorAuthMiddleware, (req, res) => {
+router.get("/me", doctorAuthMiddleware, async (req, res) => {
   res.json({ doctor: req.doctor });
 });
 
@@ -94,26 +93,26 @@ router.put("/me", doctorAuthMiddleware, upload.fields([
   { name: "licenseDoc", maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { name, phone, bio, city, area, licenseNumber, googleMapLink, acceptedInsurances } = req.body as Record<string, any>;
-    if (name?.trim()) db.prepare("UPDATE doctors SET name = ? WHERE id = ?").run(name.trim(), req.doctor!.id);
-    if (phone !== undefined) db.prepare("UPDATE doctors SET phone = ? WHERE id = ?").run(phone || null, req.doctor!.id);
-    if (bio !== undefined) db.prepare("UPDATE doctors SET bio = ? WHERE id = ?").run(bio || null, req.doctor!.id);
-    if (city !== undefined) db.prepare("UPDATE doctors SET city = ? WHERE id = ?").run(city || null, req.doctor!.id);
-    if (area !== undefined) db.prepare("UPDATE doctors SET area = ? WHERE id = ?").run(area || null, req.doctor!.id);
-    if (licenseNumber !== undefined) db.prepare("UPDATE doctors SET license_number = ? WHERE id = ?").run(licenseNumber || null, req.doctor!.id);
-    if (googleMapLink !== undefined) db.prepare("UPDATE doctors SET google_map_link = ? WHERE id = ?").run(googleMapLink || null, req.doctor!.id);
-    if (acceptedInsurances !== undefined) db.prepare("UPDATE doctors SET accepted_insurances = ? WHERE id = ?").run(JSON.stringify(acceptedInsurances || []), req.doctor!.id);
+    if (name?.trim()) await db.prepare("UPDATE doctors SET name = ? WHERE id = ?").run(name.trim(), req.doctor!.id);
+    if (phone !== undefined) await db.prepare("UPDATE doctors SET phone = ? WHERE id = ?").run(phone || null, req.doctor!.id);
+    if (bio !== undefined) await db.prepare("UPDATE doctors SET bio = ? WHERE id = ?").run(bio || null, req.doctor!.id);
+    if (city !== undefined) await db.prepare("UPDATE doctors SET city = ? WHERE id = ?").run(city || null, req.doctor!.id);
+    if (area !== undefined) await db.prepare("UPDATE doctors SET area = ? WHERE id = ?").run(area || null, req.doctor!.id);
+    if (licenseNumber !== undefined) await db.prepare("UPDATE doctors SET license_number = ? WHERE id = ?").run(licenseNumber || null, req.doctor!.id);
+    if (googleMapLink !== undefined) await db.prepare("UPDATE doctors SET google_map_link = ? WHERE id = ?").run(googleMapLink || null, req.doctor!.id);
+    if (acceptedInsurances !== undefined) await db.prepare("UPDATE doctors SET accepted_insurances = ? WHERE id = ?").run(JSON.stringify(acceptedInsurances || []), req.doctor!.id);
     
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
     if (files?.["idCard"]?.[0]?.filename) {
-      db.prepare("UPDATE doctors SET id_card_path = ? WHERE id = ?").run(files["idCard"][0].filename, req.doctor!.id);
+      await db.prepare("UPDATE doctors SET id_card_path = ? WHERE id = ?").run(files["idCard"][0].filename, req.doctor!.id);
     }
     if (files?.["licenseDoc"]?.[0]?.filename) {
-      db.prepare("UPDATE doctors SET license_doc_path = ? WHERE id = ?").run(files["licenseDoc"][0].filename, req.doctor!.id);
+      await db.prepare("UPDATE doctors SET license_doc_path = ? WHERE id = ?").run(files["licenseDoc"][0].filename, req.doctor!.id);
     }
     
-    const row = db.prepare("SELECT * FROM doctors WHERE id = ?").get(req.doctor!.id) as import("../auth-doctor.js").DoctorRow;
+    const row = await db.prepare("SELECT * FROM doctors WHERE id = ?").get(req.doctor!.id) as import("../auth-doctor.js").DoctorRow;
     res.json({ doctor: toSafeDoctor(row) });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل تحديث البيانات" });
@@ -121,8 +120,8 @@ router.put("/me", doctorAuthMiddleware, upload.fields([
 });
 
 // --- Appointments ---
-router.get("/appointments", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/appointments", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { status, from, to } = req.query as { status?: string; from?: string; to?: string };
   let query = "SELECT * FROM appointments WHERE doctor_id = ?";
   const params: string[] = [req.doctor!.id];
@@ -130,34 +129,34 @@ router.get("/appointments", doctorAuthMiddleware, (req, res) => {
   if (from) { query += " AND slot >= ?"; params.push(from); }
   if (to) { query += " AND slot <= ?"; params.push(to); }
   query += " ORDER BY slot ASC";
-  const rows = db.prepare(query).all(...params);
+  const rows = await db.prepare(query).all(...params);
   res.json(rows);
 });
 
-router.put("/appointments/:id/status", doctorAuthMiddleware, (req, res) => {
+router.put("/appointments/:id/status", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { status } = req.body as { status?: string };
     const valid = ["pending", "approved", "rejected", "completed", "modification_requested"];
     if (!status || !valid.includes(status)) {
       res.status(400).json({ error: "حالة غير صالحة" });
       return;
     }
-    const appt = db.prepare("SELECT * FROM appointments WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!appt) {
       res.status(404).json({ error: "الموعد غير موجود" });
       return;
     }
-    db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, req.params.id);
+    await db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, req.params.id);
     if (status === "completed") {
       const row = appt as any;
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT id FROM clinic_financial_transactions
         WHERE doctor_id = ? AND category = 'كشف' AND title = ? AND transaction_date = ?
         LIMIT 1
       `).get(req.doctor!.id, `كشف ${row.patient_name}`, row.slot);
       if (!existing) {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO clinic_financial_transactions
           (id, doctor_id, type, category, title, amount, payment_method, counterparty, status, transaction_date, notes)
           VALUES (?, ?, 'income', 'كشف', ?, ?, 'نقدي', ?, 'paid', ?, ?)
@@ -179,8 +178,8 @@ router.put("/appointments/:id/status", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Statistics ---
-router.get("/stats", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/stats", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { from, to } = req.query as { from?: string; to?: string };
   let totalQuery = "SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ?";
   let periodQuery = "SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ?";
@@ -198,21 +197,21 @@ router.get("/stats", doctorAuthMiddleware, (req, res) => {
     periodParams.push(to);
   }
 
-  const total = (db.prepare(totalQuery).get(...params) as { count: number }).count;
-  const periodCount = (db.prepare(periodQuery).get(...periodParams) as { count: number }).count;
-  const approved = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'approved'").get(req.doctor!.id) as { count: number }).count;
-  const pending = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'pending'").get(req.doctor!.id) as { count: number }).count;
+  const total = (await db.prepare(totalQuery).get(...params) as { count: number }).count;
+  const periodCount = (await db.prepare(periodQuery).get(...periodParams) as { count: number }).count;
+  const approved = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'approved'").get(req.doctor!.id) as { count: number }).count;
+  const pending = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'pending'").get(req.doctor!.id) as { count: number }).count;
 
   // Last month stats
   const lastMonthStart = new Date(); lastMonthStart.setMonth(lastMonthStart.getMonth() - 1); lastMonthStart.setDate(1); lastMonthStart.setHours(0, 0, 0, 0);
   const thisMonthStart = new Date(); thisMonthStart.setDate(1); thisMonthStart.setHours(0, 0, 0, 0);
-  const lastMonthAppts = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { count: number }).count;
-  const lastMonthRevenue = (db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { c: number }).c;
-  const lastMonthPatients = (db.prepare("SELECT COUNT(DISTINCT patient_name) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { count: number }).count;
+  const lastMonthAppts = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { count: number }).count;
+  const lastMonthRevenue = (await db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { c: number }).c;
+  const lastMonthPatients = (await db.prepare("SELECT COUNT(DISTINCT patient_name) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, lastMonthStart.toISOString(), thisMonthStart.toISOString()) as { count: number }).count;
 
   // This month stats
-  const thisMonthAppts = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, thisMonthStart.toISOString()) as { count: number }).count;
-  const thisMonthRevenue = (db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, thisMonthStart.toISOString()) as { c: number }).c;
+  const thisMonthAppts = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, thisMonthStart.toISOString()) as { count: number }).count;
+  const thisMonthRevenue = (await db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, thisMonthStart.toISOString()) as { c: number }).c;
 
   res.json({
     total, period: periodCount, approved, pending,
@@ -222,9 +221,9 @@ router.get("/stats", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Report ---
-router.get("/report", doctorAuthMiddleware, (req, res) => {
+router.get("/report", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const period = (req.query.period as string) || "3m";
     let months: number;
     if (period === "6m") months = 6;
@@ -234,22 +233,22 @@ router.get("/report", doctorAuthMiddleware, (req, res) => {
     const startDate = new Date(); startDate.setMonth(startDate.getMonth() - months); startDate.setHours(0, 0, 0, 0);
     const start = startDate.toISOString();
 
-    const totalAppointments = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
-    const completedAppointments = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
-    const totalRevenue = (db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, start) as { c: number }).c;
-    const totalPatients = (db.prepare("SELECT COUNT(DISTINCT patient_name) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
-    const cancellations = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'rejected' AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
-    const clinicPatients = (db.prepare("SELECT COUNT(*) as count FROM doctor_clinic_patients WHERE doctor_id = ? AND created_at >= ?").get(req.doctor!.id, start) as { count: number }).count;
-    const clinicRevenue = (db.prepare("SELECT COALESCE(SUM(amount), 0) as c FROM clinic_financial_transactions WHERE doctor_id = ? AND type = 'income' AND transaction_date >= ?").get(req.doctor!.id, start) as { c: number }).c;
-    const clinicExpenses = (db.prepare("SELECT COALESCE(SUM(amount), 0) as c FROM clinic_financial_transactions WHERE doctor_id = ? AND type = 'expense' AND transaction_date >= ?").get(req.doctor!.id, start) as { c: number }).c;
+    const totalAppointments = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
+    const completedAppointments = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
+    const totalRevenue = (await db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ?").get(req.doctor!.id, start) as { c: number }).c;
+    const totalPatients = (await db.prepare("SELECT COUNT(DISTINCT patient_name) as count FROM appointments WHERE doctor_id = ? AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
+    const cancellations = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'rejected' AND slot >= ?").get(req.doctor!.id, start) as { count: number }).count;
+    const clinicPatients = (await db.prepare("SELECT COUNT(*) as count FROM doctor_clinic_patients WHERE doctor_id = ? AND created_at >= ?").get(req.doctor!.id, start) as { count: number }).count;
+    const clinicRevenue = (await db.prepare("SELECT COALESCE(SUM(amount), 0) as c FROM clinic_financial_transactions WHERE doctor_id = ? AND type = 'income' AND transaction_date >= ?").get(req.doctor!.id, start) as { c: number }).c;
+    const clinicExpenses = (await db.prepare("SELECT COALESCE(SUM(amount), 0) as c FROM clinic_financial_transactions WHERE doctor_id = ? AND type = 'expense' AND transaction_date >= ?").get(req.doctor!.id, start) as { c: number }).c;
 
     // Monthly breakdown
     const monthlyBreakdown: { month: string; appointments: number; revenue: number }[] = [];
     for (let i = 0; i < months; i++) {
       const mStart = new Date(startDate); mStart.setMonth(mStart.getMonth() + i);
       const mEnd = new Date(mStart); mEnd.setMonth(mEnd.getMonth() + 1);
-      const mAppts = (db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, mStart.toISOString(), mEnd.toISOString()) as { count: number }).count;
-      const mRev = (db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ? AND slot < ?").get(req.doctor!.id, mStart.toISOString(), mEnd.toISOString()) as { c: number }).c;
+      const mAppts = (await db.prepare("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND slot >= ? AND slot < ?").get(req.doctor!.id, mStart.toISOString(), mEnd.toISOString()) as { count: number }).count;
+      const mRev = (await db.prepare("SELECT COALESCE(SUM(fee), 0) as c FROM appointments WHERE doctor_id = ? AND status = 'completed' AND slot >= ? AND slot < ?").get(req.doctor!.id, mStart.toISOString(), mEnd.toISOString()) as { c: number }).c;
       monthlyBreakdown.push({
         month: mStart.toLocaleDateString("ar-SA", { month: "long", year: "numeric" }),
         appointments: mAppts,
@@ -277,8 +276,8 @@ router.get("/report", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Medical Summaries ---
-router.get("/summaries", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/summaries", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { from, to } = req.query as { from?: string; to?: string };
   let query = `
     SELECT ms.*, a.patient_name, a.slot
@@ -289,29 +288,29 @@ router.get("/summaries", doctorAuthMiddleware, (req, res) => {
   if (from) { query += " AND ms.created_at >= ?"; params.push(from); }
   if (to) { query += " AND ms.created_at <= ?"; params.push(to); }
   query += " ORDER BY ms.created_at DESC";
-  const rows = db.prepare(query).all(...params);
+  const rows = await db.prepare(query).all(...params);
   res.json(rows);
 });
 
-router.put("/summaries/:id", doctorAuthMiddleware, (req, res) => {
+router.put("/summaries/:id", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { content } = req.body as { content: string };
     if (!content?.trim()) {
       res.status(400).json({ error: "محتوى الملخص مطلوب" });
       return;
     }
-    const existing = db.prepare(
+    const existing = await db.prepare(
       "SELECT * FROM medical_summaries WHERE id = ? AND doctor_id = ?"
     ).get(req.params.id, req.doctor!.id);
     if (!existing) {
       res.status(404).json({ error: "الملخص غير موجود" });
       return;
     }
-    db.prepare(
+    await db.prepare(
       "UPDATE medical_summaries SET content = ?, edited_at = datetime('now') WHERE id = ? AND doctor_id = ?"
     ).run(content.trim(), req.params.id, req.doctor!.id);
-    const updated = db.prepare(`
+    const updated = await db.prepare(`
       SELECT ms.*, a.patient_name, a.slot
       FROM medical_summaries ms
       JOIN appointments a ON a.id = ms.appointment_id
@@ -324,15 +323,15 @@ router.put("/summaries/:id", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Subscription ---
-router.get("/subscription/plans", (_req, res) => {
-  const db = getDb();
-  const plans = db.prepare("SELECT * FROM subscription_plans WHERE active = 1").all();
+router.get("/subscription/plans", async (_req, res) => {
+  const db = await getDb();
+  const plans = await db.prepare("SELECT * FROM subscription_plans WHERE active = 1").all();
   res.json(plans.map((p: any) => ({ ...p, features: JSON.parse(p.features) })));
 });
 
-router.get("/subscription/my", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
-  let sub = db.prepare(`
+router.get("/subscription/my", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
+  let sub = await db.prepare(`
     SELECT ds.*, sp.name as plan_name, sp.description, sp.price_monthly, sp.price_yearly, sp.max_patients, sp.features
     FROM doctor_subscriptions ds
     JOIN subscription_plans sp ON sp.id = ds.plan_id
@@ -343,13 +342,13 @@ router.get("/subscription/my", doctorAuthMiddleware, (req, res) => {
 
   // Auto-downgrade expired trial to Free
   if (sub && sub.is_trial === 1 && new Date(sub.end_date) < new Date()) {
-    db.prepare("UPDATE doctor_subscriptions SET active = 0 WHERE id = ?").run(sub.id);
+    await db.prepare("UPDATE doctor_subscriptions SET active = 0 WHERE id = ?").run(sub.id);
     const freeId = generateId();
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO doctor_subscriptions (id, doctor_id, plan_id, start_date, end_date, is_trial)
       VALUES (?, ?, 'plan_free', datetime('now'), '2099-12-31 23:59:59', 0)
     `).run(freeId, req.doctor!.id);
-    sub = db.prepare(`
+    sub = await db.prepare(`
       SELECT ds.*, sp.name as plan_name, sp.description, sp.price_monthly, sp.price_yearly, sp.max_patients, sp.features
       FROM doctor_subscriptions ds
       JOIN subscription_plans sp ON sp.id = ds.plan_id
@@ -361,26 +360,26 @@ router.get("/subscription/my", doctorAuthMiddleware, (req, res) => {
   res.json(sub ?? null);
 });
 
-router.post("/subscription/subscribe", doctorAuthMiddleware, (req, res) => {
+router.post("/subscription/subscribe", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { planId, yearly } = req.body as { planId?: string; yearly?: boolean };
     if (!planId) {
       res.status(400).json({ error: "معرف الباقة مطلوب" });
       return;
     }
-    const plan = db.prepare("SELECT * FROM subscription_plans WHERE id = ? AND active = 1").get(planId) as any;
+    const plan = await db.prepare("SELECT * FROM subscription_plans WHERE id = ? AND active = 1").get(planId) as any;
     if (!plan) {
       res.status(404).json({ error: "الباقة غير موجودة" });
       return;
     }
 
     // deactivate old subscriptions
-    db.prepare("UPDATE doctor_subscriptions SET active = 0 WHERE doctor_id = ?").run(req.doctor!.id);
+    await db.prepare("UPDATE doctor_subscriptions SET active = 0 WHERE doctor_id = ?").run(req.doctor!.id);
 
     const id = generateId();
     const months = yearly ? 12 : 1;
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO doctor_subscriptions (id, doctor_id, plan_id, start_date, end_date)
       VALUES (?, ?, ?, datetime('now'), datetime('now', '+' || ? || ' months'))
     `).run(id, req.doctor!.id, planId, months);
@@ -392,8 +391,8 @@ router.post("/subscription/subscribe", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Clinic Patients (doctor-managed records) ---
-router.get("/patients", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/patients", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { search, from, to } = req.query as { search?: string; from?: string; to?: string };
   let query = "SELECT * FROM doctor_clinic_patients WHERE doctor_id = ?";
   const params: string[] = [req.doctor!.id];
@@ -401,70 +400,70 @@ router.get("/patients", doctorAuthMiddleware, (req, res) => {
   if (from) { query += " AND created_at >= ?"; params.push(from); }
   if (to) { query += " AND created_at <= ?"; params.push(to); }
   query += " ORDER BY created_at DESC";
-  const rows = db.prepare(query).all(...params);
+  const rows = await db.prepare(query).all(...params);
   res.json(rows);
 });
 
-router.post("/patients", doctorAuthMiddleware, (req, res) => {
+router.post("/patients", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { name, phone, age, gender, history, notes } = req.body as Record<string, any>;
     if (!name?.trim()) { res.status(400).json({ error: "اسم المريض مطلوب" }); return; }
     const id = generateId();
-    db.prepare("INSERT INTO doctor_clinic_patients (id, doctor_id, name, phone, age, gender, history, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    await db.prepare("INSERT INTO doctor_clinic_patients (id, doctor_id, name, phone, age, gender, history, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
       .run(id, req.doctor!.id, name.trim(), phone || null, age ? parseInt(age) : null, gender || null, history || null, notes || null);
-    const row = db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ?").get(id);
+    const row = await db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ?").get(id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل إضافة المريض" });
   }
 });
 
-router.put("/patients/:id", doctorAuthMiddleware, (req, res) => {
+router.put("/patients/:id", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const existing = await db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!existing) { res.status(404).json({ error: "المريض غير موجود" }); return; }
     const { name, phone, age, gender, history, notes } = req.body as Record<string, any>;
-    if (name?.trim()) db.prepare("UPDATE doctor_clinic_patients SET name = ? WHERE id = ?").run(name.trim(), req.params.id);
-    if (phone !== undefined) db.prepare("UPDATE doctor_clinic_patients SET phone = ? WHERE id = ?").run(phone || null, req.params.id);
-    if (age !== undefined) db.prepare("UPDATE doctor_clinic_patients SET age = ? WHERE id = ?").run(age ? parseInt(age) : null, req.params.id);
-    if (gender !== undefined) db.prepare("UPDATE doctor_clinic_patients SET gender = ? WHERE id = ?").run(gender || null, req.params.id);
-    if (history !== undefined) db.prepare("UPDATE doctor_clinic_patients SET history = ? WHERE id = ?").run(history || null, req.params.id);
-    if (notes !== undefined) db.prepare("UPDATE doctor_clinic_patients SET notes = ? WHERE id = ?").run(notes || null, req.params.id);
-    const row = db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ?").get(req.params.id);
+    if (name?.trim()) await db.prepare("UPDATE doctor_clinic_patients SET name = ? WHERE id = ?").run(name.trim(), req.params.id);
+    if (phone !== undefined) await db.prepare("UPDATE doctor_clinic_patients SET phone = ? WHERE id = ?").run(phone || null, req.params.id);
+    if (age !== undefined) await db.prepare("UPDATE doctor_clinic_patients SET age = ? WHERE id = ?").run(age ? parseInt(age) : null, req.params.id);
+    if (gender !== undefined) await db.prepare("UPDATE doctor_clinic_patients SET gender = ? WHERE id = ?").run(gender || null, req.params.id);
+    if (history !== undefined) await db.prepare("UPDATE doctor_clinic_patients SET history = ? WHERE id = ?").run(history || null, req.params.id);
+    if (notes !== undefined) await db.prepare("UPDATE doctor_clinic_patients SET notes = ? WHERE id = ?").run(notes || null, req.params.id);
+    const row = await db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ?").get(req.params.id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل تحديث بيانات المريض" });
   }
 });
 
-router.get("/patients/:id", doctorAuthMiddleware, (req, res) => {
+router.get("/patients/:id", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const patient = db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const patient = await db.prepare("SELECT * FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!patient) { res.status(404).json({ error: "المريض غير موجود" }); return; }
     // Also fetch prescriptions for this patient
-    const prescriptions = db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, req.params.id);
+    const prescriptions = await db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, req.params.id);
     // Also fetch appointments for this patient by matching name
-    const appointments = db.prepare("SELECT * FROM appointments WHERE doctor_id = ? AND patient_name = ? ORDER BY slot DESC").all(req.doctor!.id, (patient as any).name);
-    const visits = db.prepare("SELECT * FROM clinic_visits WHERE doctor_id = ? AND patient_id = ? ORDER BY visit_date DESC, created_at DESC").all(req.doctor!.id, req.params.id);
-    const files = db.prepare("SELECT * FROM patient_files WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, req.params.id);
-    const financials = db.prepare("SELECT * FROM clinic_financial_transactions WHERE doctor_id = ? AND patient_id = ? ORDER BY transaction_date DESC").all(req.doctor!.id, req.params.id);
+    const appointments = await db.prepare("SELECT * FROM appointments WHERE doctor_id = ? AND patient_name = ? ORDER BY slot DESC").all(req.doctor!.id, (patient as any).name);
+    const visits = await db.prepare("SELECT * FROM clinic_visits WHERE doctor_id = ? AND patient_id = ? ORDER BY visit_date DESC, created_at DESC").all(req.doctor!.id, req.params.id);
+    const files = await db.prepare("SELECT * FROM patient_files WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, req.params.id);
+    const financials = await db.prepare("SELECT * FROM clinic_financial_transactions WHERE doctor_id = ? AND patient_id = ? ORDER BY transaction_date DESC").all(req.doctor!.id, req.params.id);
     res.json({ patient, prescriptions, appointments, visits, files, financials });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل جلب بيانات المريض" });
   }
 });
 
-router.post("/patients/:id/visits", doctorAuthMiddleware, (req, res) => {
+router.post("/patients/:id/visits", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const patient = db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const patient = await db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!patient) { res.status(404).json({ error: "المريض غير موجود" }); return; }
     const { visitDate, chiefComplaint, diagnosis, treatmentPlan, notes, followUpDate } = req.body as Record<string, any>;
     const id = generateId();
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO clinic_visits
       (id, doctor_id, patient_id, visit_date, chief_complaint, diagnosis, treatment_plan, notes, follow_up_date)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -479,24 +478,24 @@ router.post("/patients/:id/visits", doctorAuthMiddleware, (req, res) => {
       notes || null,
       followUpDate || null
     );
-    const row = db.prepare("SELECT * FROM clinic_visits WHERE id = ?").get(id);
+    const row = await db.prepare("SELECT * FROM clinic_visits WHERE id = ?").get(id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل تسجيل الكشف" });
   }
 });
 
-router.post("/patients/:id/files", doctorAuthMiddleware, upload.single("file"), (req, res) => {
+router.post("/patients/:id/files", doctorAuthMiddleware, upload.single("file"), async (req, res) => {
   try {
-    const db = getDb();
-    const patient = db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const patient = await db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!patient) { res.status(404).json({ error: "المريض غير موجود" }); return; }
     const { fileType, title, notes } = req.body as Record<string, string>;
     if (!title?.trim()) { res.status(400).json({ error: "عنوان الملف مطلوب" }); return; }
     const validTypes = new Set(["prescription", "xray", "lab", "report", "other"]);
     const safeType = validTypes.has(fileType) ? fileType : "other";
     const id = generateId();
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO patient_files
       (id, doctor_id, patient_id, file_type, title, notes, file_path, original_name)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -510,7 +509,7 @@ router.post("/patients/:id/files", doctorAuthMiddleware, upload.single("file"), 
       req.file?.filename || null,
       req.file?.originalname || null
     );
-    const row = db.prepare("SELECT * FROM patient_files WHERE id = ?").get(id);
+    const row = await db.prepare("SELECT * FROM patient_files WHERE id = ?").get(id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل رفع الملف" });
@@ -518,8 +517,8 @@ router.post("/patients/:id/files", doctorAuthMiddleware, upload.single("file"), 
 });
 
 // --- Clinic Finances ---
-router.get("/finances", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/finances", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { type, from, to } = req.query as { type?: string; from?: string; to?: string };
   let query = `
     SELECT ft.*, p.name as patient_name
@@ -531,13 +530,13 @@ router.get("/finances", doctorAuthMiddleware, (req, res) => {
   if (from) { query += " AND ft.transaction_date >= ?"; params.push(from); }
   if (to) { query += " AND ft.transaction_date <= ?"; params.push(to); }
   query += " ORDER BY ft.transaction_date DESC, ft.created_at DESC";
-  const rows = db.prepare(query).all(...params);
+  const rows = await db.prepare(query).all(...params);
   res.json(rows);
 });
 
-router.post("/finances", doctorAuthMiddleware, (req, res) => {
+router.post("/finances", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { patientId, type, category, title, amount, paymentMethod, counterparty, status, transactionDate, dueDate, notes } = req.body as Record<string, any>;
     if (!title?.trim() || !category?.trim() || amount === undefined || Number.isNaN(Number(amount))) {
       res.status(400).json({ error: "العنوان والفئة والمبلغ مطلوبة" });
@@ -546,11 +545,11 @@ router.post("/finances", doctorAuthMiddleware, (req, res) => {
     const safeType = type === "expense" ? "expense" : "income";
     const safeStatus = ["paid", "unpaid", "partial"].includes(status) ? status : "paid";
     if (patientId) {
-      const patient = db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(patientId, req.doctor!.id);
+      const patient = await db.prepare("SELECT id FROM doctor_clinic_patients WHERE id = ? AND doctor_id = ?").get(patientId, req.doctor!.id);
       if (!patient) { res.status(404).json({ error: "المريض غير موجود" }); return; }
     }
     const id = generateId();
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO clinic_financial_transactions
       (id, doctor_id, patient_id, type, category, title, amount, payment_method, counterparty, status, transaction_date, due_date, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -569,7 +568,7 @@ router.post("/finances", doctorAuthMiddleware, (req, res) => {
       dueDate || null,
       notes || null
     );
-    const row = db.prepare(`
+    const row = await db.prepare(`
       SELECT ft.*, p.name as patient_name
       FROM clinic_financial_transactions ft
       LEFT JOIN doctor_clinic_patients p ON p.id = ft.patient_id
@@ -582,60 +581,60 @@ router.post("/finances", doctorAuthMiddleware, (req, res) => {
 });
 
 // --- Prescriptions ---
-router.get("/prescriptions", doctorAuthMiddleware, (req, res) => {
-  const db = getDb();
+router.get("/prescriptions", doctorAuthMiddleware, async (req, res) => {
+  const db = await getDb();
   const { patientId } = req.query as { patientId?: string };
   let rows;
   if (patientId) {
-    rows = db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, patientId);
+    rows = await db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? AND patient_id = ? ORDER BY created_at DESC").all(req.doctor!.id, patientId);
   } else {
-    rows = db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? ORDER BY created_at DESC").all(req.doctor!.id);
+    rows = await db.prepare("SELECT * FROM prescriptions WHERE doctor_id = ? ORDER BY created_at DESC").all(req.doctor!.id);
   }
   res.json(rows);
 });
 
-router.post("/prescriptions", doctorAuthMiddleware, (req, res) => {
+router.post("/prescriptions", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
+    const db = await getDb();
     const { patientId, patientName, patientPhone, medicationName, dosage, frequency, duration, notes } = req.body as Record<string, any>;
     if (!medicationName?.trim() || !patientName?.trim()) {
       res.status(400).json({ error: "اسم الدواء واسم المريض مطلوبان" });
       return;
     }
     const id = generateId();
-    db.prepare("INSERT INTO prescriptions (id, doctor_id, patient_id, patient_name, patient_phone, medication_name, dosage, frequency, duration, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    await db.prepare("INSERT INTO prescriptions (id, doctor_id, patient_id, patient_name, patient_phone, medication_name, dosage, frequency, duration, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(id, req.doctor!.id, patientId || null, patientName.trim(), patientPhone || null, medicationName.trim(), dosage || null, frequency || null, duration || null, notes || null);
-    const row = db.prepare("SELECT * FROM prescriptions WHERE id = ?").get(id);
+    const row = await db.prepare("SELECT * FROM prescriptions WHERE id = ?").get(id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل إضافة الوصفة الطبية" });
   }
 });
 
-router.put("/prescriptions/:id", doctorAuthMiddleware, (req, res) => {
+router.put("/prescriptions/:id", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare("SELECT * FROM prescriptions WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const existing = await db.prepare("SELECT * FROM prescriptions WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!existing) { res.status(404).json({ error: "الوصفة غير موجودة" }); return; }
     const { medicationName, dosage, frequency, duration, notes } = req.body as Record<string, any>;
-    if (medicationName?.trim()) db.prepare("UPDATE prescriptions SET medication_name = ? WHERE id = ?").run(medicationName.trim(), req.params.id);
-    if (dosage !== undefined) db.prepare("UPDATE prescriptions SET dosage = ? WHERE id = ?").run(dosage || null, req.params.id);
-    if (frequency !== undefined) db.prepare("UPDATE prescriptions SET frequency = ? WHERE id = ?").run(frequency || null, req.params.id);
-    if (duration !== undefined) db.prepare("UPDATE prescriptions SET duration = ? WHERE id = ?").run(duration || null, req.params.id);
-    if (notes !== undefined) db.prepare("UPDATE prescriptions SET notes = ? WHERE id = ?").run(notes || null, req.params.id);
-    const row = db.prepare("SELECT * FROM prescriptions WHERE id = ?").get(req.params.id);
+    if (medicationName?.trim()) await db.prepare("UPDATE prescriptions SET medication_name = ? WHERE id = ?").run(medicationName.trim(), req.params.id);
+    if (dosage !== undefined) await db.prepare("UPDATE prescriptions SET dosage = ? WHERE id = ?").run(dosage || null, req.params.id);
+    if (frequency !== undefined) await db.prepare("UPDATE prescriptions SET frequency = ? WHERE id = ?").run(frequency || null, req.params.id);
+    if (duration !== undefined) await db.prepare("UPDATE prescriptions SET duration = ? WHERE id = ?").run(duration || null, req.params.id);
+    if (notes !== undefined) await db.prepare("UPDATE prescriptions SET notes = ? WHERE id = ?").run(notes || null, req.params.id);
+    const row = await db.prepare("SELECT * FROM prescriptions WHERE id = ?").get(req.params.id);
     res.json(row);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل تحديث الوصفة الطبية" });
   }
 });
 
-router.delete("/prescriptions/:id", doctorAuthMiddleware, (req, res) => {
+router.delete("/prescriptions/:id", doctorAuthMiddleware, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare("SELECT * FROM prescriptions WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
+    const db = await getDb();
+    const existing = await db.prepare("SELECT * FROM prescriptions WHERE id = ? AND doctor_id = ?").get(req.params.id, req.doctor!.id);
     if (!existing) { res.status(404).json({ error: "الوصفة غير موجودة" }); return; }
-    db.prepare("DELETE FROM prescriptions WHERE id = ?").run(req.params.id);
+    await db.prepare("DELETE FROM prescriptions WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "فشل حذف الوصفة" });

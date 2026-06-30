@@ -51,20 +51,20 @@ export function toSafeUser(row: UserRow): SafeUser {
 }
 
 export async function registerUser(name: string, email: string, password: string): Promise<SafeUser> {
-  const db = getDb();
-  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+  const db = await getDb();
+  const existing = await db.prepare("SELECT id FROM users WHERE email = ?").get(email);
   if (existing) throw new Error("البريد الإلكتروني مستخدم بالفعل");
 
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
   const id = generateId();
-  db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)").run(id, name, email, password_hash);
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  await db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)").run(id, name, email, password_hash);
+  const row = await db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
   return toSafeUser(row);
 }
 
 export async function loginUser(email: string, password: string): Promise<{ user: SafeUser; token: string }> {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as UserRow | undefined;
+  const db = await getDb();
+  const row = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as UserRow | undefined;
   if (!row) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
 
   const valid = await bcrypt.compare(password, row.password_hash);
@@ -86,7 +86,7 @@ declare global {
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "تسجيل الدخول مطلوب" });
@@ -94,8 +94,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
   try {
     const payload = verifyToken(header.slice(7));
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(payload.userId) as UserRow | undefined;
+    const db = await getDb();
+    const row = await db.prepare("SELECT * FROM users WHERE id = ?").get(payload.userId) as UserRow | undefined;
     if (!row) {
       res.status(401).json({ error: "المستخدم غير موجود" });
       return;

@@ -26,45 +26,45 @@ async function loadGeminiSdk(): Promise<GeminiSdk> {
 
 function buildResponseSchema(SchemaType: GeminiSdk["SchemaType"]) {
   return {
-    type: SchemaType.OBJECT,
+    type: SchemaType.OBJECT as any,
     properties: {
       message: {
-        type: SchemaType.STRING,
+        type: SchemaType.STRING as any,
         description: "رد المساعد للمريض بالعربية، ودود وواضح",
       },
       phase: {
-        type: SchemaType.STRING,
+        type: SchemaType.STRING as any,
         description: "consultation | ready_for_summary",
       },
       summary: {
-        type: SchemaType.OBJECT,
+        type: SchemaType.OBJECT as any,
         nullable: true,
         properties: {
-          patientConcerns: { type: SchemaType.STRING },
-          symptoms: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          duration: { type: SchemaType.STRING },
-          severity: { type: SchemaType.STRING },
-          additionalNotes: { type: SchemaType.STRING },
+          patientConcerns: { type: SchemaType.STRING as any },
+          symptoms: { type: SchemaType.ARRAY as any, items: { type: SchemaType.STRING as any } },
+          duration: { type: SchemaType.STRING as any },
+          severity: { type: SchemaType.STRING as any },
+          additionalNotes: { type: SchemaType.STRING as any },
           urgencyLevel: {
-            type: SchemaType.STRING,
+            type: SchemaType.STRING as any,
             description: "low | medium | high | emergency",
           },
           recommendedSpecialties: {
-            type: SchemaType.ARRAY,
-            items: { type: SchemaType.STRING },
+            type: SchemaType.ARRAY as any,
+            items: { type: SchemaType.STRING as any },
           },
-          preferredCity: { type: SchemaType.STRING, nullable: true },
-          preferredInsurance: { type: SchemaType.STRING, nullable: true },
-          doctorBrief: { type: SchemaType.STRING },
+          preferredCity: { type: SchemaType.STRING as any, nullable: true },
+          preferredInsurance: { type: SchemaType.STRING as any, nullable: true },
+          doctorBrief: { type: SchemaType.STRING as any },
         },
       },
       profileUpdates: {
-        type: SchemaType.OBJECT,
+        type: SchemaType.OBJECT as any,
         nullable: true,
         properties: {
-          age: { type: SchemaType.NUMBER, nullable: true },
-          healthInsurance: { type: SchemaType.STRING, nullable: true },
-          dateOfBirth: { type: SchemaType.STRING, nullable: true },
+          age: { type: SchemaType.NUMBER as any, nullable: true },
+          healthInsurance: { type: SchemaType.STRING as any, nullable: true },
+          dateOfBirth: { type: SchemaType.STRING as any, nullable: true },
         },
       },
     },

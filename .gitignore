@@ -4,3 +4,17 @@ dist-server/
 .env
 *.log
 .DS_Store
+android/app/build/
+ios/App/Pods/
+ios/App/App/public/assets/
+guides/*.pptx
+releases/*.apk
+releases/*.apk.idsig
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+server/uploads/
+*.tsbuildinfo
+local.properties.txt
+.vercel
+.env*

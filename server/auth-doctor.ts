@@ -77,15 +77,15 @@ export async function registerDoctor(data: {
   id: string; name: string; email: string; password: string;
   phone?: string; bio?: string;
 }): Promise<SafeDoctor> {
-  const db = getDb();
-  const existing = db.prepare("SELECT id FROM doctors WHERE email = ?").get(data.email);
+  const db = await getDb();
+  const existing = await db.prepare("SELECT id FROM doctors WHERE email = ?").get(data.email);
   if (existing) throw new Error("البريد الإلكتروني مستخدم بالفعل");
 
   const hash = await bcrypt.hash(data.password, SALT_ROUNDS);
-  db.prepare("UPDATE doctors SET email = ?, password_hash = ?, phone = ?, bio = ? WHERE id = ?").run(
+  await db.prepare("UPDATE doctors SET email = ?, password_hash = ?, phone = ?, bio = ? WHERE id = ?").run(
     data.email, hash, data.phone ?? null, data.bio ?? null, data.id
   );
-  const row = db.prepare("SELECT * FROM doctors WHERE id = ?").get(data.id) as DoctorRow;
+  const row = await db.prepare("SELECT * FROM doctors WHERE id = ?").get(data.id) as DoctorRow;
   return toSafeDoctor(row);
 }
 
@@ -94,8 +94,8 @@ export async function createDoctor(data: {
   hospital: string; city?: string; area?: string; licenseNumber?: string; phone?: string; bio?: string;
   idCardPath?: string; licenseDocPath?: string;
 }): Promise<{ doctor: SafeDoctor; token: string }> {
-  const db = getDb();
-  const existing = db.prepare("SELECT id FROM doctors WHERE email = ?").get(data.email);
+  const db = await getDb();
+  const existing = await db.prepare("SELECT id FROM doctors WHERE email = ?").get(data.email);
   if (existing) throw new Error("البريد الإلكتروني مستخدم بالفعل");
 
   const hash = await bcrypt.hash(data.password, SALT_ROUNDS);
@@ -104,7 +104,7 @@ export async function createDoctor(data: {
   const defaultSlots = JSON.stringify(generateDefaultSlots());
   const defaultInsurances = JSON.stringify(["بوبا", "التعاونية", "ميدغلف", "أكسا"]);
 
-  db.prepare(`INSERT INTO doctors (id, name, specialty, specialty_key, hospital, city, area, license_number, email, password_hash, phone, bio, id_card_path, license_doc_path, is_verified, available_slots, rating, experience_years, consultation_fee, image, accepted_insurances)
+  await db.prepare(`INSERT INTO doctors (id, name, specialty, specialty_key, hospital, city, area, license_number, email, password_hash, phone, bio, id_card_path, license_doc_path, is_verified, available_slots, rating, experience_years, consultation_fee, image, accepted_insurances)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 4.8, 5, 250, '👨‍⚕️', ?)`).run(
     id, data.name, data.specialty, data.specialtyKey, data.hospital, data.city ?? null,
     data.area ?? null, data.licenseNumber ?? null,
@@ -115,20 +115,20 @@ export async function createDoctor(data: {
 
   // Assign 3-day Premium trial subscription for new doctors
   const subId = generateId();
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO doctor_subscriptions (id, doctor_id, plan_id, start_date, end_date, is_trial)
     VALUES (?, ?, 'plan_premium', datetime('now'), datetime('now', '+3 days'), 1)
   `).run(subId, id);
 
-  const row = db.prepare("SELECT * FROM doctors WHERE id = ?").get(id) as DoctorRow;
+  const row = await db.prepare("SELECT * FROM doctors WHERE id = ?").get(id) as DoctorRow;
   const doctor = toSafeDoctor(row);
   const token = jwt.sign({ doctorId: id, email: data.email }, JWT_SECRET, { expiresIn: "7d" });
   return { doctor, token };
 }
 
 export async function loginDoctor(email: string, password: string): Promise<{ doctor: SafeDoctor; token: string }> {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM doctors WHERE email = ?").get(email) as DoctorRow | undefined;
+  const db = await getDb();
+  const row = await db.prepare("SELECT * FROM doctors WHERE email = ?").get(email) as DoctorRow | undefined;
   if (!row || !row.password_hash) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
 
   const valid = await bcrypt.compare(password, row.password_hash);
@@ -150,7 +150,7 @@ declare global {
   }
 }
 
-export function doctorAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function doctorAuthMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "تسجيل الدخول مطلوب" });
@@ -158,8 +158,8 @@ export function doctorAuthMiddleware(req: Request, res: Response, next: NextFunc
   }
   try {
     const payload = verifyDoctorToken(header.slice(7));
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM doctors WHERE id = ?").get(payload.doctorId) as DoctorRow | undefined;
+    const db = await getDb();
+    const row = await db.prepare("SELECT * FROM doctors WHERE id = ?").get(payload.doctorId) as DoctorRow | undefined;
     if (!row) {
       res.status(401).json({ error: "الطبيب غير موجود" });
       return;
