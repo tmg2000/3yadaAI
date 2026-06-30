@@ -9,15 +9,15 @@ const router = Router();
 const SALT_ROUNDS = 10;
 
 // Admin login (public)
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
   try {
-    seedAdmin();
+    await seedAdmin();
     const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) {
       res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان" });
       return;
     }
-    const result = loginAdmin(email, password);
+    const result = await loginAdmin(email, password);
     res.json(result);
   } catch (err) {
     res.status(401).json({ error: err instanceof Error ? err.message : "فشل تسجيل الدخول" });
