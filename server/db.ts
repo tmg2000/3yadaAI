@@ -335,207 +335,28 @@ function initSchema(native: any) {
   `);
 }
 
+const SCHEMA_TABLES = [
+  `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, date_of_birth TEXT, gender TEXT, phone TEXT, age INTEGER, health_insurance TEXT, created_at TEXT DEFAULT (datetime('now')))`,
+  `CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT 'استشارة جديدة', summary_json TEXT, status TEXT NOT NULL DEFAULT 'in_progress', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, title TEXT NOT NULL DEFAULT 'استشارة جديدة', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL)`,
+  `CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('user', 'assistant')), content TEXT NOT NULL, attachments TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS appointments (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, doctor_id TEXT NOT NULL, doctor_name TEXT NOT NULL, specialty TEXT NOT NULL, hospital TEXT NOT NULL, city TEXT, slot TEXT NOT NULL, patient_name TEXT NOT NULL, phone TEXT, fee REAL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL)`,
+  `CREATE TABLE IF NOT EXISTS doctors (id TEXT PRIMARY KEY, name TEXT NOT NULL, specialty TEXT NOT NULL, specialty_key TEXT NOT NULL, hospital TEXT NOT NULL, city TEXT, area TEXT, license_number TEXT, rating REAL NOT NULL DEFAULT 0, experience_years INTEGER NOT NULL DEFAULT 0, consultation_fee REAL NOT NULL DEFAULT 0, available_slots TEXT NOT NULL DEFAULT '[]', image TEXT NOT NULL DEFAULT '👨‍⚕️', email TEXT UNIQUE, password_hash TEXT, phone TEXT, bio TEXT, id_card_path TEXT, license_doc_path TEXT, is_verified INTEGER DEFAULT 0, google_map_link TEXT, accepted_insurances TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now')))`,
+  `CREATE TABLE IF NOT EXISTS subscription_plans (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, price_monthly REAL NOT NULL, price_yearly REAL NOT NULL, max_patients INTEGER, features TEXT NOT NULL DEFAULT '[]', active INTEGER NOT NULL DEFAULT 1)`,
+  `CREATE TABLE IF NOT EXISTS doctor_subscriptions (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, plan_id TEXT NOT NULL, start_date TEXT NOT NULL DEFAULT (datetime('now')), end_date TEXT NOT NULL, auto_renew INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, is_trial INTEGER DEFAULT 0, billing_period TEXT DEFAULT 'monthly', FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE, FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS admins (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', created_at TEXT DEFAULT (datetime('now')))`,
+  `CREATE TABLE IF NOT EXISTS medical_summaries (id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL, doctor_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')), edited_at TEXT, FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE, FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS doctor_clinic_patients (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, name TEXT NOT NULL, phone TEXT, age INTEGER, gender TEXT, history TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS prescriptions (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, patient_id TEXT, patient_name TEXT NOT NULL, patient_phone TEXT, medication_name TEXT NOT NULL, dosage TEXT, frequency TEXT, duration TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS clinic_visits (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, patient_id TEXT NOT NULL, visit_date TEXT NOT NULL DEFAULT (datetime('now')), chief_complaint TEXT, diagnosis TEXT, treatment_plan TEXT, notes TEXT, follow_up_date TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE, FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS patient_files (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, patient_id TEXT NOT NULL, file_type TEXT NOT NULL CHECK(file_type IN ('prescription', 'xray', 'lab', 'report', 'other')), title TEXT NOT NULL, notes TEXT, file_path TEXT, original_name TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE, FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS clinic_financial_transactions (id TEXT PRIMARY KEY, doctor_id TEXT NOT NULL, patient_id TEXT, type TEXT NOT NULL CHECK(type IN ('income', 'expense')), category TEXT NOT NULL, title TEXT NOT NULL, amount REAL NOT NULL, payment_method TEXT, counterparty TEXT, status TEXT NOT NULL DEFAULT 'paid' CHECK(status IN ('paid', 'unpaid', 'partial')), transaction_date TEXT NOT NULL DEFAULT (datetime('now')), due_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE, FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE SET NULL)`,
+];
+
 export async function initSchemaTurso(db: DbClient): Promise<void> {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      date_of_birth TEXT,
-      gender TEXT,
-      phone TEXT,
-      age INTEGER,
-      health_insurance TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      title TEXT NOT NULL DEFAULT 'استشارة جديدة',
-      summary_json TEXT,
-      status TEXT NOT NULL DEFAULT 'in_progress',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS conversations (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      session_id TEXT,
-      title TEXT NOT NULL DEFAULT 'استشارة جديدة',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-    );
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-      content TEXT NOT NULL,
-      attachments TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS appointments (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      session_id TEXT,
-      doctor_id TEXT NOT NULL,
-      doctor_name TEXT NOT NULL,
-      specialty TEXT NOT NULL,
-      hospital TEXT NOT NULL,
-      city TEXT,
-      slot TEXT NOT NULL,
-      patient_name TEXT NOT NULL,
-      phone TEXT,
-      fee REAL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-    );
-    CREATE TABLE IF NOT EXISTS doctors (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      specialty TEXT NOT NULL,
-      specialty_key TEXT NOT NULL,
-      hospital TEXT NOT NULL,
-      city TEXT,
-      area TEXT,
-      license_number TEXT,
-      rating REAL NOT NULL DEFAULT 0,
-      experience_years INTEGER NOT NULL DEFAULT 0,
-      consultation_fee REAL NOT NULL DEFAULT 0,
-      available_slots TEXT NOT NULL DEFAULT '[]',
-      image TEXT NOT NULL DEFAULT '👨‍⚕️',
-      email TEXT UNIQUE,
-      password_hash TEXT,
-      phone TEXT,
-      bio TEXT,
-      id_card_path TEXT,
-      license_doc_path TEXT,
-      is_verified INTEGER DEFAULT 0,
-      google_map_link TEXT,
-      accepted_insurances TEXT DEFAULT '[]',
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS subscription_plans (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
-      price_monthly REAL NOT NULL,
-      price_yearly REAL NOT NULL,
-      max_patients INTEGER,
-      features TEXT NOT NULL DEFAULT '[]',
-      active INTEGER NOT NULL DEFAULT 1
-    );
-    CREATE TABLE IF NOT EXISTS doctor_subscriptions (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      plan_id TEXT NOT NULL,
-      start_date TEXT NOT NULL DEFAULT (datetime('now')),
-      end_date TEXT NOT NULL,
-      auto_renew INTEGER NOT NULL DEFAULT 1,
-      active INTEGER NOT NULL DEFAULT 1,
-      is_trial INTEGER DEFAULT 0,
-      billing_period TEXT DEFAULT 'monthly',
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-      FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS admins (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'admin',
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS medical_summaries (
-      id TEXT PRIMARY KEY,
-      appointment_id TEXT NOT NULL,
-      doctor_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      edited_at TEXT,
-      FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS doctor_clinic_patients (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      phone TEXT,
-      age INTEGER,
-      gender TEXT,
-      history TEXT,
-      notes TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS prescriptions (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      patient_id TEXT,
-      patient_name TEXT NOT NULL,
-      patient_phone TEXT,
-      medication_name TEXT NOT NULL,
-      dosage TEXT,
-      frequency TEXT,
-      duration TEXT,
-      notes TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS clinic_visits (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      patient_id TEXT NOT NULL,
-      visit_date TEXT NOT NULL DEFAULT (datetime('now')),
-      chief_complaint TEXT,
-      diagnosis TEXT,
-      treatment_plan TEXT,
-      notes TEXT,
-      follow_up_date TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-      FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS patient_files (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      patient_id TEXT NOT NULL,
-      file_type TEXT NOT NULL CHECK(file_type IN ('prescription', 'xray', 'lab', 'report', 'other')),
-      title TEXT NOT NULL,
-      notes TEXT,
-      file_path TEXT,
-      original_name TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-      FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS clinic_financial_transactions (
-      id TEXT PRIMARY KEY,
-      doctor_id TEXT NOT NULL,
-      patient_id TEXT,
-      type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
-      category TEXT NOT NULL,
-      title TEXT NOT NULL,
-      amount REAL NOT NULL,
-      payment_method TEXT,
-      counterparty TEXT,
-      status TEXT NOT NULL DEFAULT 'paid' CHECK(status IN ('paid', 'unpaid', 'partial')),
-      transaction_date TEXT NOT NULL DEFAULT (datetime('now')),
-      due_date TEXT,
-      notes TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-      FOREIGN KEY (patient_id) REFERENCES doctor_clinic_patients(id) ON DELETE SET NULL
-    );
-  `);
+  for (const sql of SCHEMA_TABLES) {
+    await db.exec(sql);
+  }
 }
 
 function runMigrations(native: any) {
