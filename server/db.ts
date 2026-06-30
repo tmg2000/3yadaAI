@@ -507,7 +507,15 @@ export function isTurso(): boolean {
 export async function seedTursoDoctors(db: DbClient): Promise<void> {
   const count = await db.prepare("SELECT COUNT(*) as c FROM doctors").get() as any;
   if (count?.c > 0) return;
-  const raw = readFileSync(join(__dirname, "data", "doctors.json"), "utf-8");
+  let doctorsPath = join(__dirname, "data", "doctors.json");
+  if (!existsSync(doctorsPath)) {
+    doctorsPath = join(process.cwd(), "server", "data", "doctors.json");
+  }
+  if (!existsSync(doctorsPath)) {
+    console.error("doctors.json not found at any path");
+    return;
+  }
+  const raw = readFileSync(doctorsPath, "utf-8");
   const list = JSON.parse(raw);
   const egyptianCities = new Set(["القاهرة", "الإسكندرية", "الجيزة", "شرم الشيخ", "الأقصر", "أسوان", "الغردقة", "بورسعيد"]);
   const egyptianInsurances = ["التأمين الصحي", "أكسا", "مصر للتأمين", "أليانز", "ميتلايف"];
