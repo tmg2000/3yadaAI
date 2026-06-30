@@ -1,8 +1,9 @@
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, unlinkSync } from "fs";
 import { generateDefaultSlots } from "./slots.js";
 import { normalizeSpecialtyKeys } from "./specialties.js";
+import { defaultDoctors, type DoctorSeed } from "./data/doctors-data.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "data");
@@ -420,8 +421,22 @@ function runMigrations(native: any) {
 function seedDoctors(native: any) {
   const count = native.prepare("SELECT COUNT(*) as c FROM doctors").get().c;
   if (count > 0) return;
-  const raw = readFileSync(join(__dirname, "data", "doctors.json"), "utf-8");
-  const list = JSON.parse(raw);
+  const insert = native.prepare("INSERT INTO doctors (id, name, specialty, specialty_key, hospital, city, rating, experience_years, consultation_fee, available_slots, image, accepted_insurances) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const tx = native.transaction(() => {
+    for (const d of seedDoctorList()) {
+      const slots = JSON.stringify(generateDefaultSlots());
+      const insurances = JSON.stringify(insuranceForDoctor(d));
+      insert.run(d.id, d.name, d.specialty, d.specialtyKey, d.hospital, d.city ?? null, d.rating, d.experienceYears, d.consultationFee, slots, d.image, insurances);
+    }
+  });
+  tx();
+}
+
+function seedDoctorList(): DoctorSeed[] {
+  return defaultDoctors;
+}
+
+function insuranceForDoctor(d: DoctorSeed): string[] {
   const egyptianCities = new Set(["القاهرة", "الإسكندرية", "الجيزة", "شرم الشيخ", "الأقصر", "أسوان", "الغردقة", "بورسعيد"]);
   const egyptianInsurances = ["التأمين الصحي", "أكسا", "مصر للتأمين", "أليانز", "ميتلايف"];
   const saudiInsurances = ["بوبا", "التعاونية", "ميدغلف", "أكسا"];
@@ -437,17 +452,11 @@ function seedDoctors(native: any) {
     gynecology: ["التأمين الصحي", "أليانز"], ent: ["أكسا", "مصر للتأمين"], psychiatry: ["ميتلايف"],
     ophthalmology: ["أليانز", "أكسا"], dentistry: ["التأمين الصحي", "مصر للتأمين"],
   };
-  const insert = native.prepare("INSERT INTO doctors (id, name, specialty, specialty_key, hospital, city, rating, experience_years, consultation_fee, available_slots, image, accepted_insurances) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  const tx = native.transaction(() => {
-    for (const d of list) {
-      const isEgypt = egyptianCities.has(d.city ?? "");
-      const map = isEgypt ? egyptMap : saudiMap;
-      const defaults = isEgypt ? egyptianInsurances : saudiInsurances;
-      const normalizedKey = normalizeSpecialtyKeys([d.specialtyKey])[0] || d.specialtyKey;
-      insert.run(d.id, d.name, d.specialty, normalizedKey, d.hospital, d.city ?? null, d.rating, d.experienceYears, d.consultationFee, JSON.stringify(generateDefaultSlots()), d.image, JSON.stringify(map[normalizedKey] || defaults));
-    }
-  });
-  tx();
+  const isEgypt = egyptianCities.has(d.city ?? "");
+  const map = isEgypt ? egyptMap : saudiMap;
+  const defaults = isEgypt ? egyptianInsurances : saudiInsurances;
+  const normalizedKey = normalizeSpecialtyKeys([d.specialtyKey])[0] || d.specialtyKey;
+  return map[normalizedKey] || defaults;
 }
 
 function seedSubscriptionPlans(native: any) {
@@ -507,38 +516,9 @@ export function isTurso(): boolean {
 export async function seedTursoDoctors(db: DbClient): Promise<void> {
   const count = await db.prepare("SELECT COUNT(*) as c FROM doctors").get() as any;
   if (count?.c > 0) return;
-  let doctorsPath = join(__dirname, "data", "doctors.json");
-  if (!existsSync(doctorsPath)) {
-    doctorsPath = join(process.cwd(), "server", "data", "doctors.json");
-  }
-  if (!existsSync(doctorsPath)) {
-    console.error("doctors.json not found at any path");
-    return;
-  }
-  const raw = readFileSync(doctorsPath, "utf-8");
-  const list = JSON.parse(raw);
-  const egyptianCities = new Set(["القاهرة", "الإسكندرية", "الجيزة", "شرم الشيخ", "الأقصر", "أسوان", "الغردقة", "بورسعيد"]);
-  const egyptianInsurances = ["التأمين الصحي", "أكسا", "مصر للتأمين", "أليانز", "ميتلايف"];
-  const saudiInsurances = ["بوبا", "التعاونية", "ميدغلف", "أكسا"];
-  const saudiMap: Record<string, string[]> = {
-    general: ["بوبا", "التعاونية"], internal: ["بوبا", "ميدغلف"], pediatrics: ["التعاونية", "أكسا"],
-    cardiology: ["بوبا", "ميدغلف", "أكسا"], dermatology: ["التعاونية"], orthopedics: ["ميدغلف", "أكسا"],
-    gynecology: ["بوبا", "التعاونية"], ent: ["التعاونية", "أكسا"], psychiatry: ["بوبا"],
-    ophthalmology: ["ميدغلف", "أكسا"], dentistry: ["بوبا", "التعاونية", "ميدغلف"],
-  };
-  const egyptMap: Record<string, string[]> = {
-    general: ["التأمين الصحي", "أكسا"], internal: ["مصر للتأمين", "أكسا"], pediatrics: ["التأمين الصحي", "أليانز"],
-    cardiology: ["مصر للتأمين", "أكسا", "ميتلايف"], dermatology: ["أليانز", "أكسا"], orthopedics: ["مصر للتأمين", "ميتلايف"],
-    gynecology: ["التأمين الصحي", "أليانز"], ent: ["أكسا", "مصر للتأمين"], psychiatry: ["ميتلايف"],
-    ophthalmology: ["أليانز", "أكسا"], dentistry: ["التأمين الصحي", "مصر للتأمين"],
-  };
-  for (const d of list) {
-    const isEgypt = egyptianCities.has(d.city ?? "");
-    const map = isEgypt ? egyptMap : saudiMap;
-    const defaults = isEgypt ? egyptianInsurances : saudiInsurances;
-    const normalizedKey = normalizeSpecialtyKeys([d.specialtyKey])[0] || d.specialtyKey;
+  for (const d of seedDoctorList()) {
     await db.prepare("INSERT OR IGNORE INTO doctors (id, name, specialty, specialty_key, hospital, city, rating, experience_years, consultation_fee, available_slots, image, accepted_insurances) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-      d.id, d.name, d.specialty, normalizedKey, d.hospital, d.city ?? null, d.rating, d.experienceYears, d.consultationFee, JSON.stringify(generateDefaultSlots()), d.image, JSON.stringify(map[normalizedKey] || defaults)
+      d.id, d.name, d.specialty, d.specialtyKey, d.hospital, d.city ?? null, d.rating, d.experienceYears, d.consultationFee, JSON.stringify(generateDefaultSlots()), d.image, JSON.stringify(insuranceForDoctor(d))
     );
   }
 }
