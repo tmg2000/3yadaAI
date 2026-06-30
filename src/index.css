@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-sans-en: "Inter", "Segoe UI", system-ui, sans-serif;
+  --color-primary-50: #ecfdf8;
+  --color-primary-100: #d1faf0;
+  --color-primary-200: #a7f3e0;
+  --color-primary-300: #6ee7c7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  --color-surface: #f8fafc;
+  --color-card: #ffffff;
+  --color-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: linear-gradient(160deg, #ecfdf8 0%, #f8fafc 45%, #eff6ff 100%);
+  min-height: 100vh;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.mobile-app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+table {
+  min-width: max-content;
+}
+
+.badge-low {
+  @apply bg-emerald-100 text-emerald-800;
+}
+.badge-medium {
+  @apply bg-amber-100 text-amber-800;
+}
+.badge-high {
+  @apply bg-orange-100 text-orange-800;
+}
+.badge-emergency {
+  @apply bg-red-100 text-red-800 animate-pulse;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-medium text-white shadow-md transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-6 py-3 font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50;
+}
+
+.card {
+  @apply rounded-2xl border border-border bg-card p-6 shadow-sm;
+}
+
+.input-field {
+  @apply w-full rounded-xl border border-border bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition;
+}
+
+@media (max-width: 640px) {
+  .card {
+    @apply rounded-xl p-4;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    @apply min-h-12 rounded-xl px-4 py-3 text-sm;
+  }
+
+  .input-field {
+    @apply min-h-12 rounded-xl px-3 py-3;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out forwards;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+.typing-dot {
+  animation: typing 1.4s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }

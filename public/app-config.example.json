@@ -1,0 +1,4 @@
+{
+  "apiBaseUrl": "",
+  "_comment": "اترك apiBaseUrl فارغاً عند النشر (الواجهة والـ API على نفس الدومين). لتطبيق أندرويد على سيرفر بعيد: ضع https://your-domain.com قبل npm run mobile:sync أو استخدم VITE_API_BASE_URL في .env.production"
+}
